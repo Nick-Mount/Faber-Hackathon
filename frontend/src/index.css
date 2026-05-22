@@ -1,0 +1,108 @@
+@import url('https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@300;400;500;600;700&family=DM+Sans:wght@400;500;600;700&display=swap');
+
+@import "tailwindcss";
+@import 'tw-animate-css';
+
+:root {
+  --camel: #DEC8AB;
+  --camel-hover: #E5D3BC;
+  --chestnut: #78583C;
+  --buff: #E2DCD4;
+  --buff-light: #F6EADB;
+  --buff-dark: #BFA27D;
+  --off-white-1: #FDFDFC;
+  --off-white-2: #F7F4F1;
+  --off-white-3: #F1EDE9;
+  --taupe: #B2A592;
+  --taupe-dark: #7E7261;
+  --brown-text: #4A4036;
+  --brown-medium: #766B5A;
+  --brown-dark: #5C4F41;
+  --success-green: #7F9869;
+
+  --background: var(--off-white-2);
+  --foreground: var(--brown-text);
+  --card: var(--off-white-1);
+  --card-foreground: var(--brown-text);
+  --primary: var(--camel);
+  --primary-foreground: var(--brown-text);
+  --secondary: var(--chestnut);
+  --secondary-foreground: var(--off-white-1);
+  --muted: var(--buff);
+  --muted-foreground: var(--taupe-dark);
+  --accent: var(--camel);
+  --accent-foreground: var(--brown-text);
+  --destructive: #d4183d;
+  --destructive-foreground: #ffffff;
+  --border: var(--buff-dark);
+  --ring: var(--camel);
+  --radius: 0.625rem;
+}
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-destructive-foreground: var(--destructive-foreground);
+  --color-border: var(--border);
+  --color-ring: var(--ring);
+
+  --color-camel: #DEC8AB;
+  --color-camel-hover: #E5D3BC;
+  --color-chestnut: #78583C;
+  --color-buff: #E2DCD4;
+  --color-buff-light: #F6EADB;
+  --color-buff-dark: #BFA27D;
+  --color-off-white-1: #FDFDFC;
+  --color-off-white-2: #F7F4F1;
+  --color-off-white-3: #F1EDE9;
+  --color-taupe: #B2A592;
+  --color-taupe-dark: #7E7261;
+  --color-brown-text: #4A4036;
+  --color-brown-medium: #766B5A;
+  --color-brown-dark: #5C4F41;
+  --color-success-green: #7F9869;
+
+  --radius-sm: calc(var(--radius) - 4px);
+  --radius-md: calc(var(--radius) - 2px);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) + 4px);
+
+  --font-serif: "Cormorant Garamond", Georgia, serif;
+  --font-sans: "DM Sans", -apple-system, BlinkMacSystemFont, sans-serif;
+}
+
+@layer base {
+  * { @apply border-border; }
+  body {
+    @apply bg-background text-foreground;
+    font-family: 'DM Sans', -apple-system, BlinkMacSystemFont, sans-serif;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+  h1, h2, h3, h4, h5, h6 {
+    font-family: 'Cormorant Garamond', Georgia, serif;
+    font-weight: 500;
+  }
+  html, body, #root { min-height: 100vh; height: 100%; margin: 0; }
+}
+
+html { background-color: var(--background); scroll-behavior: smooth; }
+img { display: block; }
+button:not(:disabled), [role="button"], a[href] { cursor: pointer; }
+
+@keyframes pulse-orb {
+  0%, 100% { transform: scale(1); opacity: 1; }
+  50% { transform: scale(1.15); opacity: 0.75; }
+}
+.pulse-orb { animation: pulse-orb 1.6s ease-in-out infinite; }

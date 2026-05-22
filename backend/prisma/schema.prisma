@@ -1,0 +1,36 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id          String   @id @default(cuid())
+  firebaseUid String   @unique @map("firebase_uid")
+  email       String   @unique
+  displayName String?  @map("display_name")
+  photoUrl    String?  @map("photo_url")
+  createdAt   DateTime @default(now()) @map("created_at")
+
+  looks Look[]
+
+  @@map("users")
+}
+
+model Look {
+  id          String   @id @default(cuid())
+  userId      String   @map("user_id")
+  title       String
+  thumbnail   String   @db.Text
+  suggestion  String   @db.Text
+  transcript  String   @db.Text
+  createdAt   DateTime @default(now()) @map("created_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, createdAt(sort: Desc)])
+  @@map("looks")
+}
