@@ -163,17 +163,15 @@ export function CameraStudio({
               break;
             case "rendered-image": {
               setRendering(false);
+              const dataUrl = `data:image/png;base64,${e.data}`;
               setRenderedImages((imgs) => [
                 ...imgs,
                 {
                   id: Date.now() + imgs.length,
-                  data: `data:image/png;base64,${e.data}`,
+                  data: dataUrl,
                   prompt: e.prompt ?? null,
                 },
               ]);
-              const dataUrl = `data:image/png;base64,${e.data}`;
-              setRenderedImage(dataUrl);
-              setRenderPrompt(e.prompt);
               onRendered?.(dataUrl, e.prompt ?? null);
               break;
             }
