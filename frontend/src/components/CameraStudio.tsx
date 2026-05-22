@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { Mic, MicOff, Save, Camera as CameraIcon, Sparkles, Menu, X } from "lucide-react";
+import { Mic, MicOff, Save, Camera as CameraIcon, Sparkles, ChevronLeft, ChevronRight, ArrowRight, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { openLiveSession, type LiveSession } from "@/services/liveSession";
@@ -14,7 +14,12 @@ const FRAME_INTERVAL_MS = 1500;
 // PCM16 RMS threshold (~ -40 dBFS). Below this, treat as background noise and skip.
 const NOISE_GATE_RMS = 325;
 
-export function CameraStudio() {
+interface CameraStudioProps {
+  onNext?: () => void;
+  nextLabel?: string;
+}
+
+export function CameraStudio({ onNext, nextLabel = "Generate 3D model" }: CameraStudioProps = {}) {
   const { getIdToken } = useAuth();
   const videoRef = useRef<HTMLVideoElement>(null);
   const desktopVideoRef = useRef<HTMLVideoElement>(null);
@@ -261,27 +266,46 @@ export function CameraStudio() {
 
   const running = status !== "idle" && status !== "error";
 
-  function toggleMute() {
-    const next = !mutedRef.current;
-    mutedRef.current = next;
-    setMuted(next);
+  const startingRef = useRef(false);
+  const pressedRef = useRef(false);
+
+  function unmute() {
+    if (mutedRef.current) {
+      mutedRef.current = false;
+      setMuted(false);
+    }
   }
 
-  const startingRef = useRef(false);
-  async function handleMicButton() {
+  function muteAndFlush() {
+    if (!mutedRef.current) {
+      mutedRef.current = true;
+      setMuted(true);
+      sessionRef.current?.sendEndAudio();
+    }
+  }
+
+  async function handlePressStart() {
+    if (pressedRef.current) return;
+    pressedRef.current = true;
     if (running) {
-      toggleMute();
+      unmute();
       return;
     }
     if (startingRef.current) return;
     startingRef.current = true;
     try {
       await start();
-      mutedRef.current = false;
-      setMuted(false);
+      // Only go hot if still being held; release during connect leaves muted.
+      if (pressedRef.current) unmute();
     } finally {
       startingRef.current = false;
     }
+  }
+
+  function handlePressEnd() {
+    if (!pressedRef.current) return;
+    pressedRef.current = false;
+    muteAndFlush();
   }
 
   const statusPill = (
@@ -298,7 +322,7 @@ export function CameraStudio() {
       />
       {status === "idle" && "Ready"}
       {status === "connecting" && "Connecting…"}
-      {status === "listening" && (muted ? "Muted" : "Listening")}
+      {status === "listening" && (muted ? "Hold mic to talk" : "Listening")}
       {status === "speaking" && "Stylist talking"}
       {status === "error" && "Error"}
     </div>
@@ -306,8 +330,8 @@ export function CameraStudio() {
 
   return (
     <>
-      {/* MOBILE: fullscreen camera with tucked-away controls */}
-      <div className="fixed inset-0 z-40 bg-black lg:hidden">
+      {/* MOBILE: fullscreen camera below the workbench header */}
+      <div className="fixed inset-x-0 bottom-0 top-[68px] z-30 bg-black lg:hidden">
         <video
           ref={videoRef}
           muted
@@ -315,17 +339,22 @@ export function CameraStudio() {
           className="absolute inset-0 size-full object-cover"
         />
 
+        {/* Side tab — opens transcript/menu panel. Hidden while menu is open;
+            the panel renders its own mirrored tab to close. */}
+        {!mobileMenuOpen && (
+          <button
+            type="button"
+            onClick={() => setMobileMenuOpen(true)}
+            className="absolute right-0 top-1/2 z-10 flex h-16 w-7 -translate-y-1/2 items-center justify-center rounded-l-xl bg-black/55 text-white shadow-lg backdrop-blur active:scale-95"
+            aria-label="Open menu"
+          >
+            <ChevronLeft className="size-5" />
+          </button>
+        )}
+
         <div className="pointer-events-none absolute inset-0 flex flex-col">
-          <div className="flex items-start justify-between p-4">
+          <div className="flex items-start p-4">
             <div className="pointer-events-auto">{statusPill}</div>
-            <button
-              type="button"
-              onClick={() => setMobileMenuOpen(true)}
-              className="pointer-events-auto rounded-full bg-black/55 p-2.5 text-white backdrop-blur active:scale-95"
-              aria-label="Open menu"
-            >
-              <Menu className="size-5" />
-            </button>
           </div>
 
           <div className="mt-auto flex items-end justify-between gap-3 p-4 pb-[max(1rem,env(safe-area-inset-bottom))]">
@@ -350,19 +379,29 @@ export function CameraStudio() {
               ) : null}
             </div>
 
-            {/* Primary mic button — bottom right. Tap to mute/unmute. */}
-            <div className="pointer-events-auto">
+            {/* Primary mic button — bottom right. Hold to talk. */}
+            <div className="pointer-events-auto flex flex-col items-center gap-1">
               <button
                 type="button"
-                onClick={handleMicButton}
+                onPointerDown={(e) => {
+                  e.preventDefault();
+                  e.currentTarget.setPointerCapture(e.pointerId);
+                  void handlePressStart();
+                }}
+                onPointerUp={handlePressEnd}
+                onPointerCancel={handlePressEnd}
+                onContextMenu={(e) => e.preventDefault()}
                 className={cn(
-                  "flex size-16 items-center justify-center rounded-full text-white shadow-lg active:scale-95",
-                  !running || muted ? "bg-chestnut/80" : "bg-success-green",
+                  "flex size-16 items-center justify-center rounded-full text-white shadow-lg transition-all touch-none select-none",
+                  !running || muted ? "bg-chestnut/80" : "bg-success-green scale-110",
                 )}
-                aria-label={!running ? "Start session" : muted ? "Unmute microphone" : "Mute microphone"}
+                aria-label={!running ? "Hold to start session" : muted ? "Hold to talk" : "Recording, release to send"}
               >
                 {!running || muted ? <MicOff className="size-7" /> : <Mic className="size-7" />}
               </button>
+              <span className="text-[10px] uppercase tracking-[0.18em] text-white/80 drop-shadow">
+                {!running ? "Hold to start" : muted ? "Hold to talk" : "Release to send"}
+              </span>
             </div>
           </div>
         </div>
@@ -373,7 +412,7 @@ export function CameraStudio() {
           </div>
         )}
 
-        {/* Slide-down menu panel */}
+        {/* Slide-in menu panel */}
         {mobileMenuOpen && (
           <div className="absolute inset-0 z-50 flex flex-col bg-black/60 backdrop-blur-sm">
             <div
@@ -381,20 +420,33 @@ export function CameraStudio() {
               onClick={() => setMobileMenuOpen(false)}
               aria-hidden
             />
+            {/* Mirrored pull tab — closes the menu. Sibling of the panel so
+                the panel's overflow-y-auto doesn't clip it. */}
+            <button
+              type="button"
+              onClick={() => setMobileMenuOpen(false)}
+              className="absolute top-1/2 z-[60] flex h-16 w-7 -translate-y-1/2 items-center justify-center rounded-l-xl bg-black/55 text-white shadow-lg backdrop-blur active:scale-95"
+              style={{ right: "min(20rem, 85%)" }}
+              aria-label="Close menu"
+            >
+              <ChevronRight className="size-5" />
+            </button>
             <div className="relative ml-auto h-full w-[min(20rem,85%)] overflow-y-auto bg-off-white-1 p-5 shadow-2xl">
-              <div className="mb-4 flex items-center justify-between">
-                <h2 className="font-serif text-2xl text-chestnut">Studio</h2>
-                <button
-                  type="button"
-                  onClick={() => setMobileMenuOpen(false)}
-                  className="rounded-full p-2 text-brown-medium hover:bg-buff-light/60"
-                  aria-label="Close menu"
-                >
-                  <X className="size-5" />
-                </button>
-              </div>
+              <h2 className="mb-4 font-serif text-2xl text-chestnut">Studio</h2>
 
               <div className="flex flex-col gap-3">
+                {onNext && (
+                  <Button
+                    onClick={() => {
+                      setMobileMenuOpen(false);
+                      onNext();
+                    }}
+                  >
+                    {nextLabel}
+                    <ArrowRight />
+                  </Button>
+                )}
+
                 <Button
                   variant="secondary"
                   disabled={!running || saving}
@@ -492,15 +544,32 @@ export function CameraStudio() {
             <div className="absolute left-4 top-4">{statusPill}</div>
           </div>
           <div className="flex flex-wrap items-center justify-between gap-3 p-4">
-            {!running ? (
-              <Button size="lg" onClick={handleMicButton}>
-                <Mic /> Start session
-              </Button>
-            ) : (
-              <Button size="lg" onClick={toggleMute} variant={muted ? "outline" : "default"}>
-                {muted ? <><MicOff /> Unmute</> : <><Mic /> Mute</>}
-              </Button>
-            )}
+            <button
+              type="button"
+              onPointerDown={(e) => {
+                e.preventDefault();
+                e.currentTarget.setPointerCapture(e.pointerId);
+                void handlePressStart();
+              }}
+              onPointerUp={handlePressEnd}
+              onPointerCancel={handlePressEnd}
+              onPointerLeave={handlePressEnd}
+              onContextMenu={(e) => e.preventDefault()}
+              className={cn(
+                "inline-flex h-11 items-center justify-center gap-2 rounded-xl px-6 text-base font-medium text-white shadow transition-all touch-none select-none",
+                !running || muted
+                  ? "bg-chestnut hover:bg-chestnut/90"
+                  : "bg-success-green scale-105",
+              )}
+              aria-label={!running ? "Hold to start session" : muted ? "Hold to talk" : "Recording, release to send"}
+            >
+              {!running || muted ? <MicOff /> : <Mic />}
+              {!running
+                ? "Hold to start"
+                : muted
+                ? "Hold to talk"
+                : "Release to send"}
+            </button>
             <div className="flex items-center gap-2">
               <Button variant="secondary" disabled={!running || saving} onClick={saveLook}>
                 <Save />

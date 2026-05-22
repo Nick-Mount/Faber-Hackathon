@@ -214,15 +214,7 @@ export function Header() {
                   {link.label}
                 </Link>
               ))}
-              <a
-                href="https://www.fabermark.com"
-                target="_blank"
-                rel="noopener noreferrer"
-                onClick={() => setMobileMenuOpen(false)}
-                className="text-left px-4 py-3 rounded-lg text-[#4A4036] hover:bg-[#E8E3DC] transition-colors text-sm tracking-wider uppercase"
-              >
-                Faber.com
-              </a>
+              
 
               {!user ? (
                 <button

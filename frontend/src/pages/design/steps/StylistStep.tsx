@@ -19,7 +19,7 @@ export default function StylistStep({ onNext }: StylistStepProps) {
           </p>
         </div>
 
-        <CameraStudio />
+        <CameraStudio onNext={onNext} nextLabel="Generate 3D model" />
 
         <div className="mt-10 flex justify-end">
           <button

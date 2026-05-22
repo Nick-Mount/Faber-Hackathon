@@ -31,6 +31,7 @@ export interface LiveSession {
   sendAudioChunk: (pcm: Int16Array) => void;
   sendVideoFrame: (jpegBase64: string) => void;
   sendText: (text: string) => void;
+  sendEndAudio: () => void;
   close: () => void;
 }
 
@@ -60,6 +61,10 @@ export function openLiveSession(opts: {
         sendText: (text) => {
           if (ws.readyState !== WebSocket.OPEN) return;
           ws.send(JSON.stringify({ type: "text", text }));
+        },
+        sendEndAudio: () => {
+          if (ws.readyState !== WebSocket.OPEN) return;
+          ws.send(JSON.stringify({ type: "end-audio" }));
         },
         close: () => ws.close(),
       });
