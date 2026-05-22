@@ -45,6 +45,9 @@ export function CameraStudio() {
 
   useEffect(() => {
     let cancelled = false;
+    // Try to prefetch the camera preview on mount. iOS Safari requires a user
+    // gesture for getUserMedia, so this attempt is best-effort — failure is
+    // silent and the first mic-button tap will request camera + mic together.
     (async () => {
       try {
         const camStream = await navigator.mediaDevices.getUserMedia({
@@ -57,8 +60,8 @@ export function CameraStudio() {
         }
         camStreamRef.current = camStream;
         attachCamStream(camStream);
-      } catch (err: any) {
-        if (!cancelled) setError(err?.message ?? "Camera unavailable");
+      } catch {
+        // Silently ignored — we'll prompt on first user gesture.
       }
     })();
     return () => {
