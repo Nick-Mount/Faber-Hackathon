@@ -3,9 +3,10 @@ import { CameraStudio } from "@/components/CameraStudio";
 
 interface StylistStepProps {
   onNext: () => void;
+  onRendered?: (image: string, prompt: string | null) => void;
 }
 
-export default function StylistStep({ onNext }: StylistStepProps) {
+export default function StylistStep({ onNext, onRendered }: StylistStepProps) {
   return (
     <main className="h-full w-full overflow-y-auto">
       <div className="max-w-6xl mx-auto px-4 sm:px-8 py-8 sm:py-10">
@@ -19,7 +20,7 @@ export default function StylistStep({ onNext }: StylistStepProps) {
           </p>
         </div>
 
-        <CameraStudio onNext={onNext} nextLabel="Generate 3D model" />
+        <CameraStudio onNext={onNext} nextLabel="Generate 3D model" onRendered={onRendered} />
 
         <div className="mt-10 flex justify-end">
           <button
