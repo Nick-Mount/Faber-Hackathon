@@ -57,9 +57,11 @@ export function CameraStudio({
 
   useEffect(() => {
     let cancelled = false;
-    // Try to prefetch the camera preview on mount. iOS Safari requires a user
-    // gesture for getUserMedia, so this attempt is best-effort — failure is
-    // silent and the first mic-button tap will request camera + mic together.
+    // Mount-time: prefetch camera, then auto-start the Gemini session so the
+    // stylist is already "active" when the user lands on the studio. iOS
+    // Safari requires a user gesture for getUserMedia, so these attempts are
+    // best-effort — failure is silent and the first mic-button tap will
+    // prompt for permissions and start the session.
     (async () => {
       try {
         const camStream = await navigator.mediaDevices.getUserMedia({
@@ -74,6 +76,13 @@ export function CameraStudio({
         attachCamStream(camStream);
       } catch {
         // Silently ignored — we'll prompt on first user gesture.
+      }
+      if (cancelled) return;
+      // Auto-activate Gemini. Mic stays muted; user toggles to talk.
+      try {
+        await start({ silent: true });
+      } catch {
+        // ignored — fallback path is the mic button.
       }
     })();
     return () => {
@@ -93,7 +102,7 @@ export function CameraStudio({
     }
   }
 
-  async function start() {
+  async function start(opts: { silent?: boolean } = {}) {
     setError(null);
     setStatus("connecting");
     try {
@@ -206,9 +215,14 @@ export function CameraStudio({
       frameTimerRef.current = window.setInterval(() => sendFrame(), FRAME_INTERVAL_MS);
     } catch (err: any) {
       console.error(err);
-      setError(err?.message ?? "Failed to start");
-      setStatus("error");
       stopAll();
+      if (opts.silent) {
+        setStatus("idle");
+        setError(null);
+      } else {
+        setError(err?.message ?? "Failed to start");
+        setStatus("error");
+      }
     }
   }
 
@@ -284,7 +298,6 @@ export function CameraStudio({
   const running = status !== "idle" && status !== "error";
 
   const startingRef = useRef(false);
-  const pressedRef = useRef(false);
 
   function unmute() {
     if (mutedRef.current) {
@@ -301,28 +314,20 @@ export function CameraStudio({
     }
   }
 
-  async function handlePressStart() {
-    if (pressedRef.current) return;
-    pressedRef.current = true;
+  async function handleMicButton() {
     if (running) {
-      unmute();
+      if (mutedRef.current) unmute();
+      else muteAndFlush();
       return;
     }
     if (startingRef.current) return;
     startingRef.current = true;
     try {
       await start();
-      // Only go hot if still being held; release during connect leaves muted.
-      if (pressedRef.current) unmute();
+      unmute();
     } finally {
       startingRef.current = false;
     }
-  }
-
-  function handlePressEnd() {
-    if (!pressedRef.current) return;
-    pressedRef.current = false;
-    muteAndFlush();
   }
 
   const statusPill = (
@@ -419,28 +424,21 @@ export function CameraStudio({
               )}
             </div>
 
-            {/* Primary mic button — bottom right. Hold to talk. */}
+            {/* Primary mic button — bottom right. Tap to toggle. */}
             <div className="pointer-events-auto flex flex-col items-center gap-1">
               <button
                 type="button"
-                onPointerDown={(e) => {
-                  e.preventDefault();
-                  e.currentTarget.setPointerCapture(e.pointerId);
-                  void handlePressStart();
-                }}
-                onPointerUp={handlePressEnd}
-                onPointerCancel={handlePressEnd}
-                onContextMenu={(e) => e.preventDefault()}
+                onClick={() => void handleMicButton()}
                 className={cn(
-                  "flex size-16 items-center justify-center rounded-full text-white shadow-lg transition-all touch-none select-none",
-                  !running || muted ? "bg-chestnut/80" : "bg-success-green scale-110",
+                  "flex size-16 items-center justify-center rounded-full text-white shadow-lg transition-all select-none active:scale-95",
+                  !running || muted ? "bg-chestnut/80" : "bg-success-green",
                 )}
-                aria-label={!running ? "Hold to start session" : muted ? "Hold to talk" : "Recording, release to send"}
+                aria-label={!running ? "Start session" : muted ? "Unmute microphone" : "Mute microphone"}
               >
                 {!running || muted ? <MicOff className="size-7" /> : <Mic className="size-7" />}
               </button>
               <span className="text-[10px] uppercase tracking-[0.18em] text-white/80 drop-shadow">
-                {!running ? "Hold to start" : muted ? "Hold to talk" : "Release to send"}
+                {!running ? "Tap to start" : muted ? "Tap to talk" : "Tap to mute"}
               </span>
             </div>
           </div>
@@ -632,29 +630,17 @@ export function CameraStudio({
           <div className="flex flex-wrap items-center justify-between gap-3 p-4">
             <button
               type="button"
-              onPointerDown={(e) => {
-                e.preventDefault();
-                e.currentTarget.setPointerCapture(e.pointerId);
-                void handlePressStart();
-              }}
-              onPointerUp={handlePressEnd}
-              onPointerCancel={handlePressEnd}
-              onPointerLeave={handlePressEnd}
-              onContextMenu={(e) => e.preventDefault()}
+              onClick={() => void handleMicButton()}
               className={cn(
-                "inline-flex h-11 items-center justify-center gap-2 rounded-xl px-6 text-base font-medium text-white shadow transition-all touch-none select-none",
+                "inline-flex h-11 items-center justify-center gap-2 rounded-xl px-6 text-base font-medium text-white shadow transition-all select-none active:scale-95",
                 !running || muted
                   ? "bg-chestnut hover:bg-chestnut/90"
-                  : "bg-success-green scale-105",
+                  : "bg-success-green",
               )}
-              aria-label={!running ? "Hold to start session" : muted ? "Hold to talk" : "Recording, release to send"}
+              aria-label={!running ? "Start session" : muted ? "Unmute microphone" : "Mute microphone"}
             >
               {!running || muted ? <MicOff /> : <Mic />}
-              {!running
-                ? "Hold to start"
-                : muted
-                ? "Hold to talk"
-                : "Release to send"}
+              {!running ? "Start session" : muted ? "Unmute" : "Mute"}
             </button>
             <div className="flex items-center gap-2">
               <Button variant="secondary" disabled={!running || saving} onClick={saveLook}>
