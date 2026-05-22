@@ -1,53 +1,82 @@
-import { Link } from "react-router-dom";
-import { Button } from "@/components/ui/button";
+import { useNavigate } from "react-router-dom";
 import { useAuth } from "@/contexts/AuthContext";
-import { Sparkles } from "lucide-react";
 
 export default function LandingPage() {
+  const navigate = useNavigate();
   const { user, signInWithGoogle, loading } = useAuth();
 
+  const firstName = user?.displayName?.split(" ")[0];
+
+  const handlePrimary = () => {
+    if (user) {
+      navigate("/design");
+    } else {
+      void signInWithGoogle();
+    }
+  };
+
   return (
-    <div className="mx-auto max-w-5xl px-6 py-16">
-      <div className="grid items-center gap-12 md:grid-cols-2">
-        <div>
-          <div className="mb-4 inline-flex items-center gap-2 rounded-full border border-buff-dark/50 bg-off-white-1 px-3 py-1 text-xs text-brown-medium">
-            <Sparkles className="size-3.5 text-chestnut" />
-            Live AI styling, by camera
-          </div>
-          <h1 className="font-serif text-5xl leading-tight text-chestnut md:text-6xl">
-            Restyle the room you're standing in.
-          </h1>
-          <p className="mt-5 max-w-md text-lg text-brown-medium">
-            Point your camera at any space. Talk through what you have. The stylist sees it,
-            answers out loud, and helps you imagine what's next.
-          </p>
-          <div className="mt-8 flex gap-3">
-            {loading ? null : user ? (
-              <Button asChild size="lg">
-                <Link to="/studio">Open Studio</Link>
-              </Button>
-            ) : (
-              <Button size="lg" onClick={signInWithGoogle}>
-                Sign in with Google
-              </Button>
-            )}
-            {user && (
-              <Button asChild variant="outline" size="lg">
-                <Link to="/gallery">My looks</Link>
-              </Button>
-            )}
-          </div>
-        </div>
-        <div className="relative">
-          <div className="aspect-[4/5] rounded-2xl bg-gradient-to-br from-camel via-buff to-buff-light shadow-xl" />
-          <div className="absolute -bottom-6 -left-6 max-w-xs rounded-xl border border-buff-dark/40 bg-off-white-1 p-4 shadow-md">
-            <p className="font-serif text-lg text-chestnut">
-              "That walnut credenza would love a pair of brass sconces above it."
-            </p>
-            <p className="mt-2 text-xs text-brown-medium">— the stylist, probably</p>
-          </div>
-        </div>
+    <section className="fixed inset-0 z-0 flex items-center justify-center overflow-hidden pt-16 md:pt-0 bg-[#D9D3CA]">
+      <div className="absolute inset-0">
+        <img
+          src="/hero_bench.png"
+          alt="Sculptural wooden bench"
+          className="absolute inset-0 w-full h-full object-cover"
+        />
+        <div className="absolute inset-0 bg-gradient-to-t from-[#D9D3CA]/90 via-transparent to-[#D9D3CA]/40" />
       </div>
-    </div>
+
+      <div className="relative z-10 text-center max-w-5xl px-4 sm:px-8 flex flex-col items-center">
+        <div className="text-[#4A4036]/60 text-[10px] sm:text-xs tracking-[0.3em] sm:tracking-[0.4em] mb-6 sm:mb-8 uppercase">
+          The future is handmade
+        </div>
+        <h1 className="text-[#2B2419] text-3xl sm:text-4xl md:text-5xl lg:text-6xl leading-[1.1] mb-8 sm:mb-12 tracking-tight font-light px-4">
+          {user && firstName ? `Welcome back, ${firstName}` : "What do you want to make?"}
+        </h1>
+
+        {loading ? null : user ? (
+          <>
+            <button
+              type="button"
+              onClick={() => navigate("/design")}
+              className="bg-[#2B2419] hover:bg-[#4A4036] text-white px-8 sm:px-12 md:px-16 py-4 sm:py-5 md:py-6 text-xs sm:text-sm tracking-[0.15em] sm:tracking-[0.2em] uppercase transition-all min-h-[44px] cursor-pointer"
+            >
+              Start Designing
+            </button>
+
+            <span className="my-4 text-[#4A4036]/40 text-xs tracking-[0.2em]">— or —</span>
+
+            <button
+              type="button"
+              onClick={() => navigate("/gallery")}
+              className="border border-[#4A4036]/40 hover:border-[#4A4036] text-[#4A4036]/70 hover:text-[#4A4036] px-8 sm:px-12 md:px-16 py-3 sm:py-4 md:py-5 text-xs tracking-[0.15em] sm:tracking-[0.2em] uppercase transition-all min-h-[44px] cursor-pointer"
+            >
+              View Gallery
+            </button>
+          </>
+        ) : (
+          <>
+            <button
+              type="button"
+              onClick={handlePrimary}
+              className="bg-[#2B2419] hover:bg-[#4A4036] text-white px-8 sm:px-12 md:px-16 py-4 sm:py-5 md:py-6 text-xs sm:text-sm tracking-[0.15em] sm:tracking-[0.2em] uppercase transition-all min-h-[44px] cursor-pointer"
+            >
+              Sign In to Begin
+            </button>
+
+            <span className="my-4 text-[#4A4036]/40 text-xs tracking-[0.2em]">— or —</span>
+
+            <a
+              href="https://www.fabermark.com"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="border border-[#4A4036]/40 hover:border-[#4A4036] text-[#4A4036]/70 hover:text-[#4A4036] px-8 sm:px-12 md:px-16 py-3 sm:py-4 md:py-5 text-xs tracking-[0.15em] sm:tracking-[0.2em] uppercase transition-all min-h-[44px]"
+            >
+              Visit Faber.com
+            </a>
+          </>
+        )}
+      </div>
+    </section>
   );
 }

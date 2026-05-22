@@ -27,7 +27,7 @@ export default function GalleryPage() {
   }
 
   return (
-    <div className="mx-auto max-w-6xl px-6 py-10">
+    <div className="mx-auto max-w-6xl px-6 sm:px-10 pt-32 sm:pt-40 pb-16">
       <h1 className="mb-2 font-serif text-4xl text-chestnut">Saved looks</h1>
       <p className="mb-8 text-brown-medium">Snapshots from your styling sessions.</p>
 

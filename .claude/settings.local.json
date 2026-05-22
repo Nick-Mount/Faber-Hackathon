@@ -1,0 +1,10 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(cp \"C:/work/Faber/Faber-Frontend/src/assets/images/logo_black.svg\" \"C:/Users/gamep/Documents/GitHub/Faber-Hackathon/frontend/public/logo_black.svg\")",
+      "Bash(cp \"C:/work/Faber/Faber-Frontend/src/assets/images/logo_white.svg\" \"C:/Users/gamep/Documents/GitHub/Faber-Hackathon/frontend/public/logo_white.svg\")",
+      "Bash(cp \"C:/work/Faber/Faber-Frontend/src/assets/images/logo_baige.svg\" \"C:/Users/gamep/Documents/GitHub/Faber-Hackathon/frontend/public/logo_beige.svg\")",
+      "Bash(npx tsc *)"
+    ]
+  }
+}

@@ -1,11 +1,11 @@
 import { lazy, Suspense } from "react";
-import { Navigate, Route, Routes } from "react-router-dom";
+import { Navigate, Route, Routes, useLocation } from "react-router-dom";
 import { Header } from "@/components/layout/Header";
 import { useAuth } from "@/contexts/AuthContext";
 
 const Landing = lazy(() => import("@/pages/Landing"));
-const Studio = lazy(() => import("@/pages/Studio"));
 const Gallery = lazy(() => import("@/pages/Gallery"));
+const DesignFlow = lazy(() => import("@/pages/design/DesignFlow"));
 
 function RequireAuth({ children }: { children: React.ReactNode }) {
   const { user, loading } = useAuth();
@@ -20,21 +20,28 @@ function Fallback() {
   );
 }
 
+function ChromeHeader() {
+  const { pathname } = useLocation();
+  if (pathname.startsWith("/design")) return null;
+  return <Header />;
+}
+
 export default function AppRoutes() {
   return (
     <>
-      <Header />
+      <ChromeHeader />
       <Suspense fallback={<Fallback />}>
         <Routes>
           <Route path="/" element={<Landing />} />
           <Route
-            path="/studio"
+            path="/design"
             element={
               <RequireAuth>
-                <Studio />
+                <DesignFlow />
               </RequireAuth>
             }
           />
+          <Route path="/studio" element={<Navigate to="/design" replace />} />
           <Route
             path="/gallery"
             element={
