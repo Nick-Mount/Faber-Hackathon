@@ -40,11 +40,13 @@ export function CameraStudio({ onNext, nextLabel = "Generate 3D model" }: Camera
   const [lastSuggestion, setLastSuggestion] = useState("");
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
-  const [renderedImage, setRenderedImage] = useState<string | null>(null);
-  const [renderPrompt, setRenderPrompt] = useState<string | null>(null);
+  const [renderedImages, setRenderedImages] = useState<
+    { id: number; data: string; prompt: string | null }[]
+  >([]);
   const [rendering, setRendering] = useState(false);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
-  const [imageOpen, setImageOpen] = useState(false);
+  const [albumOpen, setAlbumOpen] = useState(false);
+  const [viewerIndex, setViewerIndex] = useState<number | null>(null);
   const [muted, setMuted] = useState(true);
   const mutedRef = useRef(true);
 
@@ -144,12 +146,17 @@ export function CameraStudio({ onNext, nextLabel = "Generate 3D model" }: Camera
               break;
             case "rendering":
               setRendering(true);
-              setRenderPrompt(e.prompt);
               break;
             case "rendered-image":
               setRendering(false);
-              setRenderedImage(`data:image/png;base64,${e.data}`);
-              setRenderPrompt(e.prompt);
+              setRenderedImages((imgs) => [
+                ...imgs,
+                {
+                  id: Date.now() + imgs.length,
+                  data: `data:image/png;base64,${e.data}`,
+                  prompt: e.prompt ?? null,
+                },
+              ]);
               break;
             case "render-failed":
               setRendering(false);
@@ -358,25 +365,48 @@ export function CameraStudio({ onNext, nextLabel = "Generate 3D model" }: Camera
           </div>
 
           <div className="mt-auto flex items-end justify-between gap-3 p-4 pb-[max(1rem,env(safe-area-inset-bottom))]">
-            {/* Thumbnail / rendering indicator — bottom left */}
-            <div className="pointer-events-auto">
-              {rendering ? (
+            {/* Album / rendering indicator — bottom left */}
+            <div className="pointer-events-auto flex flex-col items-center gap-1">
+              {rendering && (
                 <div className="flex size-20 items-center justify-center rounded-xl border border-white/40 bg-black/55 text-[10px] text-white backdrop-blur">
                   <div className="flex flex-col items-center gap-1">
                     <Sparkles className="size-4 animate-pulse" />
                     <span>Rendering…</span>
                   </div>
                 </div>
-              ) : renderedImage ? (
+              )}
+              {!rendering && renderedImages.length === 0 && (
+                <div
+                  className="size-20 rounded-xl border-2 border-white/80 bg-black/40 backdrop-blur"
+                  aria-hidden
+                />
+              )}
+              {!rendering && renderedImages.length > 0 && (
                 <button
                   type="button"
-                  onClick={() => setImageOpen(true)}
-                  className="block size-20 overflow-hidden rounded-xl border-2 border-white/80 shadow-lg active:scale-95"
-                  aria-label="Enlarge generated image"
+                  onClick={() => setAlbumOpen(true)}
+                  className="relative block size-20 active:scale-95"
+                  aria-label={`Open album — ${renderedImages.length} ${renderedImages.length === 1 ? "image" : "images"}`}
                 >
-                  <img src={renderedImage} alt={renderPrompt ?? "rendered"} className="size-full object-cover" />
+                  {/* Stacked card effect */}
+                  {renderedImages.length > 1 && (
+                    <span className="absolute -right-1 -top-1 size-full -rotate-3 rounded-xl border-2 border-white/60 bg-black/40 shadow-md" />
+                  )}
+                  {renderedImages.length > 2 && (
+                    <span className="absolute -right-2 -top-2 size-full rotate-3 rounded-xl border-2 border-white/40 bg-black/30 shadow-md" />
+                  )}
+                  <span className="absolute inset-0 block overflow-hidden rounded-xl border-2 border-white/80 shadow-lg">
+                    <img
+                      src={renderedImages[renderedImages.length - 1].data}
+                      alt={renderedImages[renderedImages.length - 1].prompt ?? "rendered"}
+                      className="size-full object-cover"
+                    />
+                  </span>
+                  <span className="absolute -bottom-1 -right-1 min-w-5 rounded-full bg-chestnut px-1.5 text-center text-[11px] font-medium leading-5 text-white shadow">
+                    {renderedImages.length}
+                  </span>
                 </button>
-              ) : null}
+              )}
             </div>
 
             {/* Primary mic button — bottom right. Hold to talk. */}
@@ -497,16 +527,62 @@ export function CameraStudio({ onNext, nextLabel = "Generate 3D model" }: Camera
           </div>
         )}
 
-        {/* Enlarged image modal */}
-        {imageOpen && renderedImage && (
-          <div
-            className="absolute inset-0 z-50 flex flex-col bg-black/95"
-            onClick={() => setImageOpen(false)}
-          >
-            <div className="flex justify-end p-4">
+        {/* Album grid */}
+        {albumOpen && (
+          <div className="absolute inset-0 z-50 flex flex-col bg-black/95">
+            <div className="flex items-center justify-between p-4 pt-[max(1rem,env(safe-area-inset-top))]">
+              <h2 className="font-serif text-xl text-white">
+                Album <span className="text-white/60">({renderedImages.length})</span>
+              </h2>
               <button
                 type="button"
-                onClick={() => setImageOpen(false)}
+                onClick={() => setAlbumOpen(false)}
+                className="rounded-full bg-white/10 p-2.5 text-white backdrop-blur"
+                aria-label="Close album"
+              >
+                <X className="size-5" />
+              </button>
+            </div>
+            <div className="flex-1 overflow-y-auto px-4 pb-[max(1rem,env(safe-area-inset-bottom))]">
+              {renderedImages.length === 0 ? (
+                <div className="flex h-full items-center justify-center text-sm text-white/60">
+                  No images yet.
+                </div>
+              ) : (
+                <div className="grid grid-cols-3 gap-2">
+                  {renderedImages.map((img, i) => (
+                    <button
+                      key={img.id}
+                      type="button"
+                      onClick={() => setViewerIndex(i)}
+                      className="aspect-square overflow-hidden rounded-lg border border-white/20 active:scale-95"
+                      aria-label={img.prompt ?? `Image ${i + 1}`}
+                    >
+                      <img src={img.data} alt={img.prompt ?? ""} className="size-full object-cover" />
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
+        )}
+
+        {/* Single-image viewer */}
+        {viewerIndex !== null && renderedImages[viewerIndex] && (
+          <div
+            className="absolute inset-0 z-[60] flex flex-col bg-black"
+            onClick={() => setViewerIndex(null)}
+          >
+            <div className="flex items-center justify-between p-4 pt-[max(1rem,env(safe-area-inset-top))]">
+              <span className="rounded-full bg-white/10 px-3 py-1 text-xs text-white backdrop-blur">
+                {viewerIndex + 1} / {renderedImages.length}
+              </span>
+              <button
+                type="button"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setViewerIndex(null);
+                }}
                 className="rounded-full bg-white/10 p-2.5 text-white backdrop-blur"
                 aria-label="Close image"
               >
@@ -515,14 +591,14 @@ export function CameraStudio({ onNext, nextLabel = "Generate 3D model" }: Camera
             </div>
             <div className="flex flex-1 items-center justify-center px-4">
               <img
-                src={renderedImage}
-                alt={renderPrompt ?? "rendered"}
+                src={renderedImages[viewerIndex].data}
+                alt={renderedImages[viewerIndex].prompt ?? "rendered"}
                 className="max-h-full max-w-full rounded-lg object-contain"
               />
             </div>
-            {renderPrompt && (
-              <p className="px-6 py-4 text-center text-sm italic text-white/80">
-                "{renderPrompt}"
+            {renderedImages[viewerIndex].prompt && (
+              <p className="px-6 py-4 pb-[max(1rem,env(safe-area-inset-bottom))] text-center text-sm italic text-white/80">
+                "{renderedImages[viewerIndex].prompt}"
               </p>
             )}
           </div>
@@ -610,22 +686,48 @@ export function CameraStudio({ onNext, nextLabel = "Generate 3D model" }: Camera
               )}
             </p>
           </Card>
-          {(rendering || renderedImage) && (
+          {(rendering || renderedImages.length > 0) && (
             <Card className="overflow-hidden">
-              <div className="flex items-center gap-2 border-b border-buff-dark/30 px-5 py-3">
-                <Sparkles className="size-4 text-chestnut" />
-                <h3 className="font-serif text-lg text-chestnut">Vision</h3>
+              <div className="flex items-center justify-between border-b border-buff-dark/30 px-5 py-3">
+                <div className="flex items-center gap-2">
+                  <Sparkles className="size-4 text-chestnut" />
+                  <h3 className="font-serif text-lg text-chestnut">Vision</h3>
+                </div>
+                {renderedImages.length > 0 && (
+                  <span className="text-xs text-brown-medium">
+                    {renderedImages.length} {renderedImages.length === 1 ? "image" : "images"}
+                  </span>
+                )}
               </div>
               {rendering && (
                 <div className="flex items-center justify-center bg-buff-light/40 px-5 py-10 text-sm text-brown-medium">
                   Rendering your room…
                 </div>
               )}
-              {!rendering && renderedImage && (
+              {renderedImages.length > 0 && (
                 <>
-                  <img src={renderedImage} alt={renderPrompt ?? "rendered"} className="w-full" />
-                  {renderPrompt && (
-                    <p className="px-5 py-3 text-xs italic text-muted-foreground">"{renderPrompt}"</p>
+                  {(() => {
+                    const latest = renderedImages[renderedImages.length - 1];
+                    return (
+                      <>
+                        <img src={latest.data} alt={latest.prompt ?? "rendered"} className="w-full" />
+                        {latest.prompt && (
+                          <p className="px-5 py-3 text-xs italic text-muted-foreground">"{latest.prompt}"</p>
+                        )}
+                      </>
+                    );
+                  })()}
+                  {renderedImages.length > 1 && (
+                    <div className="grid grid-cols-4 gap-1 border-t border-buff-dark/20 p-2">
+                      {renderedImages.slice(0, -1).map((img) => (
+                        <img
+                          key={img.id}
+                          src={img.data}
+                          alt={img.prompt ?? ""}
+                          className="aspect-square w-full rounded object-cover"
+                        />
+                      ))}
+                    </div>
                   )}
                 </>
               )}
