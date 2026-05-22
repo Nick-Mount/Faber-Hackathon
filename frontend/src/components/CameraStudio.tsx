@@ -17,9 +17,14 @@ const NOISE_GATE_RMS = 325;
 interface CameraStudioProps {
   onNext?: () => void;
   nextLabel?: string;
+  onRendered?: (image: string, prompt: string | null) => void;
 }
 
-export function CameraStudio({ onNext, nextLabel = "Generate 3D model" }: CameraStudioProps = {}) {
+export function CameraStudio({
+  onNext,
+  nextLabel = "Generate 3D model",
+  onRendered,
+}: CameraStudioProps = {}) {
   const { getIdToken } = useAuth();
   const videoRef = useRef<HTMLVideoElement>(null);
   const desktopVideoRef = useRef<HTMLVideoElement>(null);
@@ -146,11 +151,14 @@ export function CameraStudio({ onNext, nextLabel = "Generate 3D model" }: Camera
               setRendering(true);
               setRenderPrompt(e.prompt);
               break;
-            case "rendered-image":
+            case "rendered-image": {
               setRendering(false);
-              setRenderedImage(`data:image/png;base64,${e.data}`);
+              const dataUrl = `data:image/png;base64,${e.data}`;
+              setRenderedImage(dataUrl);
               setRenderPrompt(e.prompt);
+              onRendered?.(dataUrl, e.prompt ?? null);
               break;
+            }
             case "render-failed":
               setRendering(false);
               setError("Couldn't render the visualization — try rephrasing.");

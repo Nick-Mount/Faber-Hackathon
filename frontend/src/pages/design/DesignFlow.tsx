@@ -29,6 +29,13 @@ export default function DesignFlow() {
   const [furthestStep, setFurthestStep] = useState(1);
   const [isTransitioning, setIsTransitioning] = useState(false);
   const [showCloseModal, setShowCloseModal] = useState(false);
+  const [latestImage, setLatestImage] = useState<string | null>(null);
+  const [latestPrompt, setLatestPrompt] = useState<string | null>(null);
+
+  const handleRendered = useCallback((image: string, prompt: string | null) => {
+    setLatestImage(image);
+    setLatestPrompt(prompt);
+  }, []);
 
   const handleClose = useCallback(() => {
     if (furthestStep < 2) {
@@ -71,20 +78,29 @@ export default function DesignFlow() {
   const handleStartAnother = useCallback(() => {
     setFurthestStep(1);
     setCurrentStep(1);
+    setLatestImage(null);
+    setLatestPrompt(null);
   }, []);
 
   const renderStep = () => {
     switch (currentStep) {
       case 1:
-        return <StylistStep onNext={nextStep} />;
+        return <StylistStep onNext={nextStep} onRendered={handleRendered} />;
       case 2:
-        return <MeshyStep onNext={nextStep} onBack={prevStep} />;
+        return (
+          <MeshyStep
+            onNext={nextStep}
+            onBack={prevStep}
+            imageDataUrl={latestImage}
+            prompt={latestPrompt}
+          />
+        );
       case 3:
         return <ARStep onNext={nextStep} onBack={prevStep} />;
       case 4:
         return <FaberPromoStep onStartAnother={handleStartAnother} />;
       default:
-        return <StylistStep onNext={nextStep} />;
+        return <StylistStep onNext={nextStep} onRendered={handleRendered} />;
     }
   };
 

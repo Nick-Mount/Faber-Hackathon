@@ -4,6 +4,7 @@ import cors from "cors";
 import http from "http";
 import authRoutes from "./routes/auth";
 import looksRoutes from "./routes/looks";
+import meshyRoutes from "./routes/meshy";
 import { attachLiveProxy } from "./ws/liveProxy";
 
 const app = express();
@@ -19,6 +20,7 @@ app.use(express.json({ limit: "5mb" }));
 app.get("/health", (_req, res) => res.json({ ok: true }));
 app.use("/api/auth", authRoutes);
 app.use("/api/looks", looksRoutes);
+app.use("/api/meshy", meshyRoutes);
 
 const server = http.createServer(app);
 attachLiveProxy(server);
