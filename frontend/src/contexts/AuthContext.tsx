@@ -1,5 +1,10 @@
 import { createContext, useContext, useEffect, useState, type ReactNode } from "react";
-import { onAuthStateChanged, signInWithRedirect, signOut, type User } from "firebase/auth";
+import {
+  onAuthStateChanged,
+  signInWithPopup,
+  signOut,
+  type User,
+} from "firebase/auth";
 import { firebaseAuth, googleProvider } from "@/lib/firebase";
 
 interface AuthContextValue {
@@ -29,7 +34,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         user,
         loading,
         signInWithGoogle: async () => {
-          await signInWithRedirect(firebaseAuth, googleProvider);
+          await signInWithPopup(firebaseAuth, googleProvider);
         },
         logout: async () => {
           await signOut(firebaseAuth);
