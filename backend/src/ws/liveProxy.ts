@@ -1,6 +1,6 @@
 import { IncomingMessage, Server } from "http";
 import { WebSocket, WebSocketServer } from "ws";
-import { GoogleGenAI, Modality, Type } from "@google/genai";
+import { GoogleGenAI, Modality, Type, StartSensitivity, EndSensitivity } from "@google/genai";
 import { verifyIdToken } from "../middleware/auth";
 
 const SYSTEM_INSTRUCTION = `You are an interior stylist helping the user re-style the room they are showing you on camera.
@@ -113,6 +113,16 @@ async function handleConnection(client: WebSocket, ai: GoogleGenAI) {
       responseModalities: [Modality.AUDIO],
       systemInstruction: SYSTEM_INSTRUCTION,
       tools: [VISUALIZE_TOOL],
+      realtimeInputConfig: {
+        automaticActivityDetection: {
+          // Require a louder signal to consider it speech (ignores background voices/TV).
+          startOfSpeechSensitivity: StartSensitivity.START_SENSITIVITY_LOW,
+          // Wait longer before deciding speech ended (less chopping mid-sentence).
+          endOfSpeechSensitivity: EndSensitivity.END_SENSITIVITY_LOW,
+          // 800 ms of silence before the turn closes.
+          silenceDurationMs: 800,
+        },
+      },
     },
     callbacks: {
       onopen: () => safeSendToClient({ type: "ready" }),
