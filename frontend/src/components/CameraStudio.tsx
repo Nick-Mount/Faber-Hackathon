@@ -1,10 +1,9 @@
 import { useEffect, useRef, useState } from "react";
-import { Mic, MicOff, Save, Camera as CameraIcon, Sparkles, ChevronLeft, ChevronRight, ArrowRight, X } from "lucide-react";
+import { Mic, MicOff, Camera as CameraIcon, Sparkles, ChevronLeft, ChevronRight, ArrowRight, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { openLiveSession, type LiveSession } from "@/services/liveSession";
 import { PcmPlayer } from "@/lib/audio";
-import { api } from "@/services/api";
 import { useAuth } from "@/contexts/AuthContext";
 import { cn } from "@/lib/utils";
 
@@ -42,9 +41,6 @@ export function CameraStudio({
   const [error, setError] = useState<string | null>(null);
   const [userTranscript, setUserTranscript] = useState("");
   const [modelTranscript, setModelTranscript] = useState("");
-  const [lastSuggestion, setLastSuggestion] = useState("");
-  const [saving, setSaving] = useState(false);
-  const [saved, setSaved] = useState(false);
   const [renderedImages, setRenderedImages] = useState<
     { id: number; data: string; prompt: string | null }[]
   >([]);
@@ -150,7 +146,6 @@ export function CameraStudio({
               break;
             case "model-transcript":
               setModelTranscript((t) => (t + " " + e.text).trim());
-              setLastSuggestion((s) => (s + " " + e.text).trim());
               break;
             case "turn-complete":
               setStatus("listening");
@@ -259,38 +254,6 @@ export function CameraStudio({
     playerRef.current?.close();
     playerRef.current = null;
     setStatus("idle");
-  }
-
-  async function saveLook() {
-    const canvas = canvasRef.current;
-    const video = videoRef.current;
-    if (!canvas || !video) return;
-    setSaving(true);
-    setSaved(false);
-    try {
-      const w = 800;
-      const h = Math.round((video.videoHeight / video.videoWidth) * w) || 600;
-      canvas.width = w;
-      canvas.height = h;
-      const ctx = canvas.getContext("2d");
-      if (!ctx) throw new Error("canvas unavailable");
-      ctx.drawImage(video, 0, 0, w, h);
-      const thumbnail = canvas.toDataURL("image/jpeg", 0.78);
-      const title =
-        lastSuggestion.split(/[.!?]/)[0]?.trim().slice(0, 60) || "Room snapshot";
-      await api.saveLook({
-        title,
-        thumbnail,
-        suggestion: lastSuggestion,
-        transcript: `You: ${userTranscript}\n\nStylist: ${modelTranscript}`,
-      });
-      setSaved(true);
-      setTimeout(() => setSaved(false), 2500);
-    } catch (err: any) {
-      setError(err?.message ?? "Save failed");
-    } finally {
-      setSaving(false);
-    }
   }
 
   const running = status !== "idle" && status !== "error";
@@ -483,18 +446,6 @@ export function CameraStudio({
                   </Button>
                 )}
 
-                <Button
-                  variant="secondary"
-                  disabled={!running || saving}
-                  onClick={() => {
-                    saveLook();
-                    setMobileMenuOpen(false);
-                  }}
-                >
-                  <Save />
-                  {saving ? "Saving…" : saved ? "Saved!" : "Save look"}
-                </Button>
-
                 {running && (
                   <Button
                     variant="outline"
@@ -641,10 +592,6 @@ export function CameraStudio({
               {!running ? "Start session" : muted ? "Unmute" : "Mute"}
             </button>
             <div className="flex items-center gap-2">
-              <Button variant="secondary" disabled={!running || saving} onClick={saveLook}>
-                <Save />
-                {saving ? "Saving…" : saved ? "Saved!" : "Save look"}
-              </Button>
               {running && (
                 <Button variant="ghost" onClick={stopAll}>
                   End session

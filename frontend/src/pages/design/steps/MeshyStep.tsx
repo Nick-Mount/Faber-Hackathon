@@ -7,37 +7,26 @@ interface MeshyStepProps {
   onBack: () => void;
   imageDataUrl: string | null;
   prompt: string | null;
-}
-
-declare global {
-  // eslint-disable-next-line @typescript-eslint/no-namespace
-  namespace JSX {
-    interface IntrinsicElements {
-      "model-viewer": React.DetailedHTMLProps<
-        React.HTMLAttributes<HTMLElement> & {
-          src?: string;
-          alt?: string;
-          ar?: boolean;
-          "auto-rotate"?: boolean;
-          "camera-controls"?: boolean;
-          "shadow-intensity"?: string | number;
-          exposure?: string | number;
-          "environment-image"?: string;
-          poster?: string;
-        },
-        HTMLElement
-      >;
-    }
-  }
+  sessionId: string | null;
+  savedMeshUrl: string | null;
 }
 
 const POLL_INTERVAL_MS = 5000;
 
-export default function MeshyStep({ onNext, onBack, imageDataUrl, prompt }: MeshyStepProps) {
+export default function MeshyStep({
+  onNext,
+  onBack,
+  imageDataUrl,
+  prompt,
+  sessionId,
+  savedMeshUrl,
+}: MeshyStepProps) {
   const [task, setTask] = useState<MeshyTask | null>(null);
   const [taskId, setTaskId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [starting, setStarting] = useState(false);
+  const [meshSaved, setMeshSaved] = useState(false);
+  const meshSaveAttemptedRef = useRef<string | null>(null);
   const startedForRef = useRef<string | null>(null);
 
   async function startTask(image: string) {
@@ -57,10 +46,12 @@ export default function MeshyStep({ onNext, onBack, imageDataUrl, prompt }: Mesh
     }
   }
 
-  // Kick off when an image is available.
+  // Kick off when an image is available. Skip when we're resuming with a
+  // saved mesh — that path already has a model to render.
   useEffect(() => {
+    if (savedMeshUrl) return;
     if (imageDataUrl) startTask(imageDataUrl);
-  }, [imageDataUrl]);
+  }, [imageDataUrl, savedMeshUrl]);
 
   // Poll the task until terminal.
   useEffect(() => {
@@ -88,6 +79,22 @@ export default function MeshyStep({ onNext, onBack, imageDataUrl, prompt }: Mesh
     };
   }, [taskId]);
 
+  // Persist the mesh to the session once the task succeeds. One attempt per
+  // taskId — the backend downloads the GLB and stores bytes inline.
+  useEffect(() => {
+    if (!sessionId || !taskId) return;
+    if (task?.status !== "SUCCEEDED") return;
+    if (meshSaveAttemptedRef.current === taskId) return;
+    meshSaveAttemptedRef.current = taskId;
+    api
+      .saveSessionMesh(sessionId, taskId)
+      .then(() => setMeshSaved(true))
+      .catch((err) => {
+        console.warn("mesh save failed", err);
+        meshSaveAttemptedRef.current = null;
+      });
+  }, [sessionId, taskId, task?.status]);
+
   const retry = () => {
     if (!imageDataUrl) return;
     startedForRef.current = null;
@@ -97,10 +104,12 @@ export default function MeshyStep({ onNext, onBack, imageDataUrl, prompt }: Mesh
     startTask(imageDataUrl);
   };
 
-  const modelUrl = task?.modelUrls?.glb ?? null;
-  const succeeded = task?.status === "SUCCEEDED" && !!modelUrl;
-  const failed = task?.status === "FAILED" || task?.status === "CANCELED" || task?.status === "EXPIRED";
+  const liveModelUrl = task?.modelUrls?.glb ?? null;
+  const modelUrl = savedMeshUrl ?? liveModelUrl;
+  const succeeded = !!savedMeshUrl || (task?.status === "SUCCEEDED" && !!liveModelUrl);
+  const failed = !savedMeshUrl && (task?.status === "FAILED" || task?.status === "CANCELED" || task?.status === "EXPIRED");
   const progress = task?.progress ?? 0;
+  const meshIsSaved = !!savedMeshUrl || meshSaved;
 
   return (
     <main className="h-full w-full overflow-y-auto">
@@ -201,25 +210,32 @@ export default function MeshyStep({ onNext, onBack, imageDataUrl, prompt }: Mesh
                 {prompt ? `"${prompt}"` : "Meshy 3D generation"}
               </p>
             </div>
-            <span
-              className={`rounded-full text-xs px-3 py-1.5 tracking-wide whitespace-nowrap ${
-                succeeded
-                  ? "bg-[#E4ECDB] text-[#4F6541]"
+            <div className="flex items-center gap-2">
+              {succeeded && meshIsSaved && (
+                <span className="rounded-full bg-[#F6EADB] text-[#78583C] text-xs px-2.5 py-1 tracking-wide whitespace-nowrap">
+                  Saved
+                </span>
+              )}
+              <span
+                className={`rounded-full text-xs px-3 py-1.5 tracking-wide whitespace-nowrap ${
+                  succeeded
+                    ? "bg-[#E4ECDB] text-[#4F6541]"
+                    : failed
+                    ? "bg-red-50 text-red-600"
+                    : "bg-[#F6EADB] text-[#78583C]"
+                }`}
+              >
+                {succeeded
+                  ? "Ready"
                   : failed
-                  ? "bg-red-50 text-red-600"
-                  : "bg-[#F6EADB] text-[#78583C]"
-              }`}
-            >
-              {succeeded
-                ? "Ready"
-                : failed
-                ? "Failed"
-                : starting
-                ? "Starting…"
-                : task?.status
-                ? task.status.replace("_", " ").toLowerCase()
-                : "Waiting"}
-            </span>
+                  ? "Failed"
+                  : starting
+                  ? "Starting…"
+                  : task?.status
+                  ? task.status.replace("_", " ").toLowerCase()
+                  : "Waiting"}
+              </span>
+            </div>
           </div>
         </div>
 

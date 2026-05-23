@@ -15,22 +15,33 @@ model User {
   photoUrl    String?  @map("photo_url")
   createdAt   DateTime @default(now()) @map("created_at")
 
-  looks Look[]
+  sessions Session[]
 
   @@map("users")
 }
 
-model Look {
-  id          String   @id @default(cuid())
-  userId      String   @map("user_id")
-  title       String
-  thumbnail   String   @db.Text
-  suggestion  String   @db.Text
-  transcript  String   @db.Text
-  createdAt   DateTime @default(now()) @map("created_at")
+model Session {
+  id     String @id @default(cuid())
+  userId String @map("user_id")
+  title  String @default("Untitled session")
+
+  thumbnail  String  @db.Text
+  prompt     String? @db.Text
+  suggestion String? @db.Text
+  transcript String? @db.Text
+
+  meshTaskId       String? @map("mesh_task_id")
+  meshStatus       String? @map("mesh_status")
+  meshGlb          Bytes?  @map("mesh_glb")
+  meshThumbnailUrl String? @db.Text @map("mesh_thumbnail_url")
+
+  currentStep Int       @default(1) @map("current_step")
+  completedAt DateTime? @map("completed_at")
+  createdAt   DateTime  @default(now()) @map("created_at")
+  updatedAt   DateTime  @updatedAt @map("updated_at")
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
-  @@index([userId, createdAt(sort: Desc)])
-  @@map("looks")
+  @@index([userId, updatedAt(sort: Desc)])
+  @@map("sessions")
 }

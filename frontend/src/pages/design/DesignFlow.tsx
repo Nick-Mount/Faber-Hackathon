@@ -1,5 +1,5 @@
-import { useCallback, useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import {
   ArrowLeft,
   Box,
@@ -15,6 +15,7 @@ import StylistStep from "./steps/StylistStep";
 import MeshyStep from "./steps/MeshyStep";
 import ARStep from "./steps/ARStep";
 import FaberPromoStep from "./steps/FaberPromoStep";
+import { api } from "@/services/api";
 
 const STEPS = [
   { num: 1, label: "Describe", icon: MessageSquare },
@@ -25,17 +26,104 @@ const STEPS = [
 
 export default function DesignFlow() {
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
+  const resumeId = searchParams.get("session");
+
   const [currentStep, setCurrentStep] = useState(1);
   const [furthestStep, setFurthestStep] = useState(1);
   const [isTransitioning, setIsTransitioning] = useState(false);
   const [showCloseModal, setShowCloseModal] = useState(false);
   const [latestImage, setLatestImage] = useState<string | null>(null);
   const [latestPrompt, setLatestPrompt] = useState<string | null>(null);
+  const [sessionId, setSessionId] = useState<string | null>(null);
+  const [savedMeshUrl, setSavedMeshUrl] = useState<string | null>(null);
+  const [hydrating, setHydrating] = useState<boolean>(!!resumeId);
+  const [hydrationError, setHydrationError] = useState<string | null>(null);
+  // Guards re-entrancy: handleRendered can fire again before the first
+  // createSession resolves; the ref makes that second call wait+update.
+  const sessionCreationRef = useRef<Promise<string> | null>(null);
 
-  const handleRendered = useCallback((image: string, prompt: string | null) => {
-    setLatestImage(image);
-    setLatestPrompt(prompt);
-  }, []);
+  // Resume an existing session: hydrate step / image / mesh from the API.
+  useEffect(() => {
+    if (!resumeId) return;
+    let cancelled = false;
+    let createdMeshUrl: string | null = null;
+    setHydrating(true);
+    setHydrationError(null);
+    (async () => {
+      try {
+        const { session } = await api.getSession(resumeId);
+        if (cancelled) return;
+        setSessionId(session.id);
+        setLatestImage(session.thumbnail);
+        setLatestPrompt(session.prompt);
+        const step = Math.max(1, Math.min(STEPS.length, session.currentStep || 1));
+        setCurrentStep(step);
+        setFurthestStep(step);
+        if (session.hasMesh) {
+          createdMeshUrl = await api.getMeshBlobUrl(session.id);
+          if (cancelled) {
+            URL.revokeObjectURL(createdMeshUrl);
+            return;
+          }
+          setSavedMeshUrl(createdMeshUrl);
+        }
+      } catch (err: any) {
+        if (!cancelled) setHydrationError(err?.message ?? "Failed to load session");
+      } finally {
+        if (!cancelled) setHydrating(false);
+      }
+    })();
+    return () => {
+      cancelled = true;
+      if (createdMeshUrl) URL.revokeObjectURL(createdMeshUrl);
+    };
+  }, [resumeId]);
+
+  const handleRendered = useCallback(
+    (image: string, prompt: string | null) => {
+      setLatestImage(image);
+      setLatestPrompt(prompt);
+
+      if (sessionId) {
+        api
+          .patchSession(sessionId, { thumbnail: image, prompt: prompt ?? "" })
+          .catch((err) => console.warn("session patch failed", err));
+        return;
+      }
+      if (sessionCreationRef.current) {
+        sessionCreationRef.current
+          .then((id) =>
+            api.patchSession(id, { thumbnail: image, prompt: prompt ?? "" }),
+          )
+          .catch((err) => console.warn("session patch failed", err));
+        return;
+      }
+      const title = prompt?.slice(0, 60) || "Untitled session";
+      sessionCreationRef.current = api
+        .createSession({ title, thumbnail: image, prompt })
+        .then((res) => {
+          setSessionId(res.session.id);
+          return res.session.id;
+        })
+        .catch((err) => {
+          console.warn("session create failed", err);
+          sessionCreationRef.current = null;
+          throw err;
+        });
+    },
+    [sessionId],
+  );
+
+  const patchStep = useCallback(
+    (step: number, completed?: boolean) => {
+      if (!sessionId) return;
+      api
+        .patchSession(sessionId, { currentStep: step, completed })
+        .catch((err) => console.warn("session step patch failed", err));
+    },
+    [sessionId],
+  );
 
   const handleClose = useCallback(() => {
     if (furthestStep < 2) {
@@ -61,26 +149,38 @@ export default function DesignFlow() {
       setCurrentStep((prev) => {
         const next = Math.min(prev + 1, STEPS.length);
         setFurthestStep((f) => Math.max(f, next));
+        patchStep(next, next === STEPS.length);
         return next;
       });
       setIsTransitioning(false);
     }, 300);
-  }, []);
+  }, [patchStep]);
 
   const prevStep = useCallback(() => {
     setIsTransitioning(true);
     window.setTimeout(() => {
-      setCurrentStep((prev) => Math.max(prev - 1, 1));
+      setCurrentStep((prev) => {
+        const next = Math.max(prev - 1, 1);
+        patchStep(next);
+        return next;
+      });
       setIsTransitioning(false);
     }, 300);
-  }, []);
+  }, [patchStep]);
 
   const handleStartAnother = useCallback(() => {
     setFurthestStep(1);
     setCurrentStep(1);
     setLatestImage(null);
     setLatestPrompt(null);
-  }, []);
+    setSessionId(null);
+    sessionCreationRef.current = null;
+    setSavedMeshUrl((url) => {
+      if (url) URL.revokeObjectURL(url);
+      return null;
+    });
+    if (resumeId) navigate("/design", { replace: true });
+  }, [navigate, resumeId]);
 
   const renderStep = () => {
     switch (currentStep) {
@@ -93,6 +193,8 @@ export default function DesignFlow() {
             onBack={prevStep}
             imageDataUrl={latestImage}
             prompt={latestPrompt}
+            sessionId={sessionId}
+            savedMeshUrl={savedMeshUrl}
           />
         );
       case 3:
@@ -195,7 +297,24 @@ export default function DesignFlow() {
           currentStep === 4 ? "overflow-y-auto" : "overflow-hidden"
         } ${isTransitioning ? "opacity-0" : "opacity-100"}`}
       >
-        {renderStep()}
+        {hydrating ? (
+          <div className="flex h-full items-center justify-center text-[#78583C] text-sm tracking-[0.12em] uppercase">
+            Restoring session…
+          </div>
+        ) : hydrationError ? (
+          <div className="flex h-full flex-col items-center justify-center gap-3 px-6 text-center">
+            <p className="text-sm text-red-600">{hydrationError}</p>
+            <button
+              type="button"
+              onClick={() => navigate("/gallery")}
+              className="px-4 py-2 rounded-xl border border-[#DEC8AB] text-[#4A4036] text-sm"
+            >
+              Back to gallery
+            </button>
+          </div>
+        ) : (
+          renderStep()
+        )}
       </div>
 
       {showCloseModal && (
