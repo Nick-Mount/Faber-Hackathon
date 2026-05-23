@@ -1,12 +1,28 @@
 import { ArrowRight } from "lucide-react";
 import { CameraStudio } from "@/components/CameraStudio";
+import type { AlbumEntry } from "@/services/api";
 
 interface StylistStepProps {
   onNext: () => void;
-  onRendered?: (image: string, prompt: string | null) => void;
+  onRendered?: (roomImage: string, meshImage: string, prompt: string | null) => void;
+  initialAlbum?: AlbumEntry[];
+  initialUserTranscript?: string;
+  initialModelTranscript?: string;
+  onAlbumChange?: (album: AlbumEntry[]) => void;
+  onTranscriptChange?: (userTranscript: string, modelTranscript: string) => void;
+  autoStart?: boolean;
 }
 
-export default function StylistStep({ onNext, onRendered }: StylistStepProps) {
+export default function StylistStep({
+  onNext,
+  onRendered,
+  initialAlbum,
+  initialUserTranscript,
+  initialModelTranscript,
+  onAlbumChange,
+  onTranscriptChange,
+  autoStart,
+}: StylistStepProps) {
   return (
     <main className="h-full w-full overflow-y-auto">
       <div className="max-w-6xl mx-auto px-4 sm:px-8 py-8 sm:py-10">
@@ -20,7 +36,17 @@ export default function StylistStep({ onNext, onRendered }: StylistStepProps) {
           </p>
         </div>
 
-        <CameraStudio onNext={onNext} nextLabel="Generate 3D model" onRendered={onRendered} />
+        <CameraStudio
+          onNext={onNext}
+          nextLabel="Generate 3D model"
+          onRendered={onRendered}
+          initialAlbum={initialAlbum}
+          initialUserTranscript={initialUserTranscript}
+          initialModelTranscript={initialModelTranscript}
+          onAlbumChange={onAlbumChange}
+          onTranscriptChange={onTranscriptChange}
+          autoStart={autoStart}
+        />
 
         <div className="mt-10 flex justify-end">
           <button

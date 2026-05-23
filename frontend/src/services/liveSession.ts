@@ -22,7 +22,7 @@ export type LiveEvent =
   | { type: "turn-complete" }
   | { type: "interrupted" }
   | { type: "rendering"; prompt: string }
-  | { type: "rendered-image"; data: string; prompt: string }
+  | { type: "rendered-image"; data: string; meshImage?: string; prompt: string }
   | { type: "render-failed"; prompt: string }
   | { type: "closed" }
   | { type: "error"; message: string };

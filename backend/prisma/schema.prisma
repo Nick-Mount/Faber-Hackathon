@@ -25,10 +25,12 @@ model Session {
   userId String @map("user_id")
   title  String @default("Untitled session")
 
-  thumbnail  String  @db.Text
-  prompt     String? @db.Text
-  suggestion String? @db.Text
-  transcript String? @db.Text
+  thumbnail      String  @db.Text
+  meshImage      String? @db.Text @map("mesh_image")
+  prompt         String? @db.Text
+  suggestion     String? @db.Text
+  transcript     String? @db.Text
+  renderedImages Json?   @map("rendered_images")
 
   meshTaskId       String? @map("mesh_task_id")
   meshStatus       String? @map("mesh_status")

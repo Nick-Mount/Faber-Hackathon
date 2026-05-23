@@ -40,8 +40,15 @@ export interface SessionSummary {
   updatedAt: string;
 }
 
+export interface AlbumEntry {
+  data: string;
+  prompt: string | null;
+}
+
 export interface SessionDetail extends SessionSummary {
   transcript: string | null;
+  meshImage: string | null;
+  renderedImages: AlbumEntry[] | null;
   hasMesh: boolean;
   meshBytes: number;
 }
@@ -75,9 +82,11 @@ export interface MeshyTask {
 export interface CreateSessionBody {
   title?: string;
   thumbnail: string;
+  meshImage?: string | null;
   prompt?: string | null;
   suggestion?: string | null;
   transcript?: string | null;
+  renderedImages?: AlbumEntry[];
 }
 
 export interface PatchSessionBody {
@@ -86,6 +95,8 @@ export interface PatchSessionBody {
   suggestion?: string;
   transcript?: string;
   thumbnail?: string;
+  meshImage?: string;
+  renderedImages?: AlbumEntry[];
   currentStep?: number;
   completed?: boolean;
 }

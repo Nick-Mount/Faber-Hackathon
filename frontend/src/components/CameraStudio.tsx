@@ -6,6 +6,7 @@ import { openLiveSession, type LiveSession } from "@/services/liveSession";
 import { PcmPlayer } from "@/lib/audio";
 import { useAuth } from "@/contexts/AuthContext";
 import { cn } from "@/lib/utils";
+import type { AlbumEntry } from "@/services/api";
 
 type Status = "idle" | "connecting" | "listening" | "speaking" | "error";
 
@@ -16,13 +17,28 @@ const NOISE_GATE_RMS = 325;
 interface CameraStudioProps {
   onNext?: () => void;
   nextLabel?: string;
-  onRendered?: (image: string, prompt: string | null) => void;
+  /** roomImage = full room viz (thumbnail); meshImage = isolated white-bg render for Meshy */
+  onRendered?: (roomImage: string, meshImage: string, prompt: string | null) => void;
+  initialAlbum?: AlbumEntry[];
+  initialUserTranscript?: string;
+  initialModelTranscript?: string;
+  onAlbumChange?: (album: AlbumEntry[]) => void;
+  onTranscriptChange?: (userTranscript: string, modelTranscript: string) => void;
+  /** When false, skip auto-starting the live Gemini session on mount. Used on
+   * resume so the user can review prior work before re-opening the mic. */
+  autoStart?: boolean;
 }
 
 export function CameraStudio({
   onNext,
   nextLabel = "Generate 3D model",
   onRendered,
+  initialAlbum,
+  initialUserTranscript,
+  initialModelTranscript,
+  onAlbumChange,
+  onTranscriptChange,
+  autoStart = true,
 }: CameraStudioProps = {}) {
   const { getIdToken } = useAuth();
   const videoRef = useRef<HTMLVideoElement>(null);
@@ -39,17 +55,53 @@ export function CameraStudio({
 
   const [status, setStatus] = useState<Status>("idle");
   const [error, setError] = useState<string | null>(null);
-  const [userTranscript, setUserTranscript] = useState("");
-  const [modelTranscript, setModelTranscript] = useState("");
+  const [userTranscript, setUserTranscript] = useState(() => initialUserTranscript ?? "");
+  const [modelTranscript, setModelTranscript] = useState(() => initialModelTranscript ?? "");
   const [renderedImages, setRenderedImages] = useState<
     { id: number; data: string; prompt: string | null }[]
-  >([]);
+  >(() =>
+    (initialAlbum ?? []).map((entry, i) => ({
+      id: Date.now() + i,
+      data: entry.data,
+      prompt: entry.prompt,
+    })),
+  );
   const [rendering, setRendering] = useState(false);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [albumOpen, setAlbumOpen] = useState(false);
   const [viewerIndex, setViewerIndex] = useState<number | null>(null);
   const [muted, setMuted] = useState(true);
   const mutedRef = useRef(true);
+
+  const onAlbumChangeRef = useRef(onAlbumChange);
+  const onTranscriptChangeRef = useRef(onTranscriptChange);
+  useEffect(() => {
+    onAlbumChangeRef.current = onAlbumChange;
+  }, [onAlbumChange]);
+  useEffect(() => {
+    onTranscriptChangeRef.current = onTranscriptChange;
+  }, [onTranscriptChange]);
+
+  // Notify parent on album / transcript changes so they can persist.
+  const isFirstAlbumEffect = useRef(true);
+  useEffect(() => {
+    if (isFirstAlbumEffect.current) {
+      isFirstAlbumEffect.current = false;
+      return;
+    }
+    onAlbumChangeRef.current?.(
+      renderedImages.map((r) => ({ data: r.data, prompt: r.prompt })),
+    );
+  }, [renderedImages]);
+
+  const isFirstTranscriptEffect = useRef(true);
+  useEffect(() => {
+    if (isFirstTranscriptEffect.current) {
+      isFirstTranscriptEffect.current = false;
+      return;
+    }
+    onTranscriptChangeRef.current?.(userTranscript, modelTranscript);
+  }, [userTranscript, modelTranscript]);
 
   useEffect(() => {
     let cancelled = false;
@@ -74,6 +126,7 @@ export function CameraStudio({
         // Silently ignored — we'll prompt on first user gesture.
       }
       if (cancelled) return;
+      if (!autoStart) return;
       // Auto-activate Gemini. Mic stays muted; user toggles to talk.
       try {
         await start({ silent: true });
@@ -158,16 +211,19 @@ export function CameraStudio({
               break;
             case "rendered-image": {
               setRendering(false);
-              const dataUrl = `data:image/png;base64,${e.data}`;
+              const roomUrl = `data:image/png;base64,${e.data}`;
+              const meshUrl = e.meshImage
+                ? `data:image/png;base64,${e.meshImage}`
+                : roomUrl;
               setRenderedImages((imgs) => [
                 ...imgs,
                 {
                   id: Date.now() + imgs.length,
-                  data: dataUrl,
+                  data: roomUrl,
                   prompt: e.prompt ?? null,
                 },
               ]);
-              onRendered?.(dataUrl, e.prompt ?? null);
+              onRendered?.(roomUrl, meshUrl, e.prompt ?? null);
               break;
             }
             case "render-failed":

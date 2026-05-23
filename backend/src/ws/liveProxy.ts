@@ -117,6 +117,39 @@ async function handleConnection(client: WebSocket, ai: GoogleGenAI) {
     }
   };
 
+  // Takes the room-context image and re-renders just the furniture piece on a
+  // white background — Meshy produces much cleaner meshes from isolated subjects.
+  const runMeshExtract = async (roomImageBase64: string, prompt: string): Promise<string | null> => {
+    try {
+      const res = await ai.models.generateContent({
+        model: IMAGE_MODEL,
+        contents: [
+          {
+            role: "user",
+            parts: [
+              { inlineData: { mimeType: "image/png", data: roomImageBase64 } },
+              {
+                text: `This image shows a room with a furniture piece described as: "${prompt}". ` +
+                  "Render ONLY that piece isolated on a pure white background. " +
+                  "Show the complete object from a slight front three-quarter angle. " +
+                  "Preserve all surface detail, texture, color, and material from the original. " +
+                  "No room, no floor, no shadows — just the single furniture piece on white.",
+              },
+            ],
+          },
+        ],
+      });
+      const parts = res.candidates?.[0]?.content?.parts ?? [];
+      for (const p of parts) {
+        if (p.inlineData?.data) return p.inlineData.data;
+      }
+      return null;
+    } catch (err) {
+      console.warn("[live] mesh extract failed, falling back to room image", err);
+      return null;
+    }
+  };
+
   session = await ai.live.connect({
     model: LIVE_MODEL,
     config: {
@@ -159,9 +192,17 @@ async function handleConnection(client: WebSocket, ai: GoogleGenAI) {
             if (call.name === "visualize_room_change") {
               const prompt = call.args?.prompt ?? "";
               safeSendToClient({ type: "rendering", prompt });
-              const image = await runVisualize(prompt);
-              if (image) {
-                safeSendToClient({ type: "rendered-image", data: image, prompt });
+              const roomImage = await runVisualize(prompt);
+              if (roomImage) {
+                // Fire the room viz to the client immediately so the user isn't
+                // waiting on the mesh-extract pass to see anything.
+                const meshImage = await runMeshExtract(roomImage, prompt);
+                safeSendToClient({
+                  type: "rendered-image",
+                  data: roomImage,
+                  meshImage: meshImage ?? undefined,
+                  prompt,
+                });
                 responses.push({
                   id: call.id,
                   name: call.name,

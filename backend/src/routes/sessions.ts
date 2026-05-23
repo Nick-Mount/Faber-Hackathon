@@ -8,6 +8,30 @@ router.use(authenticate);
 const MESHY_BASE = "https://api.meshy.ai/openapi/v1";
 const MAX_THUMB_LEN = 2_000_000;
 const MAX_GLB_BYTES = 25 * 1024 * 1024;
+const MAX_ALBUM_ENTRIES = 8;
+const MAX_ALBUM_BYTES = 8_000_000;
+
+type AlbumEntry = { data: string; prompt: string | null };
+
+function sanitizeAlbum(raw: unknown): AlbumEntry[] | null {
+  if (!Array.isArray(raw)) return null;
+  const out: AlbumEntry[] = [];
+  let total = 0;
+  for (const item of raw.slice(-MAX_ALBUM_ENTRIES)) {
+    if (!item || typeof item !== "object") continue;
+    const data = (item as any).data;
+    const prompt = (item as any).prompt;
+    if (typeof data !== "string" || !data.startsWith("data:image/")) continue;
+    if (data.length > MAX_THUMB_LEN) continue;
+    total += data.length;
+    if (total > MAX_ALBUM_BYTES) break;
+    out.push({
+      data,
+      prompt: typeof prompt === "string" ? prompt.slice(0, 2000) : null,
+    });
+  }
+  return out;
+}
 
 const listSelect = {
   id: true,
@@ -24,6 +48,13 @@ const listSelect = {
   updatedAt: true,
 } as const;
 
+const detailSelect = {
+  ...listSelect,
+  transcript: true,
+  meshImage: true,
+  renderedImages: true,
+} as const;
+
 router.get("/", async (req, res) => {
   const sessions = await prisma.session.findMany({
     where: { userId: req.userId! },
@@ -36,7 +67,7 @@ router.get("/", async (req, res) => {
 router.get("/:id", async (req, res) => {
   const row = await prisma.session.findFirst({
     where: { id: req.params.id, userId: req.userId! },
-    select: { ...listSelect, transcript: true },
+    select: detailSelect,
   });
   if (!row) return res.status(404).json({ error: "Not found" });
   const meshSize = await prisma.$queryRaw<{ size: number | null }[]>`
@@ -59,21 +90,29 @@ router.get("/:id/mesh", async (req, res) => {
 });
 
 router.post("/", async (req, res) => {
-  const { title, thumbnail, prompt, suggestion, transcript } = req.body ?? {};
+  const { title, thumbnail, meshImage, prompt, suggestion, transcript, renderedImages } =
+    req.body ?? {};
   if (typeof thumbnail !== "string" || !thumbnail.startsWith("data:image/")) {
     return res.status(400).json({ error: "thumbnail must be a data URL" });
   }
   if (thumbnail.length > MAX_THUMB_LEN) {
     return res.status(413).json({ error: "thumbnail too large" });
   }
+  const meshImageValue =
+    typeof meshImage === "string" && meshImage.startsWith("data:image/") && meshImage.length <= MAX_THUMB_LEN
+      ? meshImage
+      : null;
+  const album = sanitizeAlbum(renderedImages);
   const session = await prisma.session.create({
     data: {
       userId: req.userId!,
       title: (title || "Untitled session").toString().slice(0, 120),
       thumbnail,
+      meshImage: meshImageValue,
       prompt: typeof prompt === "string" ? prompt.slice(0, 2000) : null,
       suggestion: typeof suggestion === "string" ? suggestion.slice(0, 8000) : null,
       transcript: typeof transcript === "string" ? transcript.slice(0, 16000) : null,
+      renderedImages: album ?? undefined,
     },
     select: listSelect,
   });
@@ -81,8 +120,17 @@ router.post("/", async (req, res) => {
 });
 
 router.patch("/:id", async (req, res) => {
-  const { title, prompt, suggestion, transcript, thumbnail, currentStep, completed } =
-    req.body ?? {};
+  const {
+    title,
+    prompt,
+    suggestion,
+    transcript,
+    thumbnail,
+    meshImage,
+    renderedImages,
+    currentStep,
+    completed,
+  } = req.body ?? {};
 
   const updates: Record<string, unknown> = {};
   if (typeof title === "string") updates.title = title.slice(0, 120);
@@ -94,6 +142,16 @@ router.patch("/:id", async (req, res) => {
       return res.status(413).json({ error: "thumbnail too large" });
     }
     updates.thumbnail = thumbnail;
+  }
+  if (typeof meshImage === "string" && meshImage.startsWith("data:image/")) {
+    if (meshImage.length > MAX_THUMB_LEN) {
+      return res.status(413).json({ error: "meshImage too large" });
+    }
+    updates.meshImage = meshImage;
+  }
+  if (renderedImages !== undefined) {
+    const album = sanitizeAlbum(renderedImages);
+    if (album) updates.renderedImages = album;
   }
   if (typeof currentStep === "number") {
     updates.currentStep = Math.max(1, Math.min(4, Math.floor(currentStep)));

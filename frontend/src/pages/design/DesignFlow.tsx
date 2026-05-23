@@ -15,7 +15,7 @@ import StylistStep from "./steps/StylistStep";
 import MeshyStep from "./steps/MeshyStep";
 import ARStep from "./steps/ARStep";
 import FaberPromoStep from "./steps/FaberPromoStep";
-import { api } from "@/services/api";
+import { api, type AlbumEntry, type PatchSessionBody } from "@/services/api";
 
 const STEPS = [
   { num: 1, label: "Describe", icon: MessageSquare },
@@ -23,6 +23,8 @@ const STEPS = [
   { num: 3, label: "Place", icon: Smartphone },
   { num: 4, label: "Commission", icon: PartyPopper },
 ] as const;
+
+const PERSIST_DEBOUNCE_MS = 1500;
 
 export default function DesignFlow() {
   const navigate = useNavigate();
@@ -34,14 +36,84 @@ export default function DesignFlow() {
   const [isTransitioning, setIsTransitioning] = useState(false);
   const [showCloseModal, setShowCloseModal] = useState(false);
   const [latestImage, setLatestImage] = useState<string | null>(null);
+  const [latestMeshImage, setLatestMeshImage] = useState<string | null>(null);
   const [latestPrompt, setLatestPrompt] = useState<string | null>(null);
   const [sessionId, setSessionId] = useState<string | null>(null);
   const [savedMeshUrl, setSavedMeshUrl] = useState<string | null>(null);
   const [hydrating, setHydrating] = useState<boolean>(!!resumeId);
   const [hydrationError, setHydrationError] = useState<string | null>(null);
+  const [album, setAlbum] = useState<AlbumEntry[]>([]);
+  const [userTranscript, setUserTranscript] = useState<string>("");
+  const [modelTranscript, setModelTranscript] = useState<string>("");
+  // True once we've finished loading an existing session — gates auto-start of
+  // the live mic on Step 1 when resuming so the user isn't surprised by audio.
+  const [resumedFromSaved, setResumedFromSaved] = useState<boolean>(false);
   // Guards re-entrancy: handleRendered can fire again before the first
   // createSession resolves; the ref makes that second call wait+update.
   const sessionCreationRef = useRef<Promise<string> | null>(null);
+
+  // Debounced PATCH queue — transcripts update every Gemini chunk, so we
+  // coalesce writes instead of hammering the API.
+  const pendingPatchRef = useRef<PatchSessionBody>({});
+  const patchTimerRef = useRef<number | null>(null);
+  const sessionIdRef = useRef<string | null>(null);
+  useEffect(() => {
+    sessionIdRef.current = sessionId;
+  }, [sessionId]);
+
+  const flushPatch = useCallback(async () => {
+    if (patchTimerRef.current) {
+      window.clearTimeout(patchTimerRef.current);
+      patchTimerRef.current = null;
+    }
+    if (Object.keys(pendingPatchRef.current).length === 0) return;
+
+    let id = sessionIdRef.current;
+    if (!id && sessionCreationRef.current) {
+      try {
+        id = await sessionCreationRef.current;
+      } catch {
+        return;
+      }
+    }
+    // No session yet (e.g., user talked before generating a render). Keep the
+    // pending updates queued so the next flush — usually triggered when a
+    // render creates the session — picks them up.
+    if (!id) return;
+
+    const pending = pendingPatchRef.current;
+    pendingPatchRef.current = {};
+    try {
+      await api.patchSession(id, pending);
+    } catch (err) {
+      console.warn("session patch failed", err);
+    }
+  }, []);
+
+  const queuePatch = useCallback(
+    (body: PatchSessionBody, opts: { immediate?: boolean } = {}) => {
+      pendingPatchRef.current = { ...pendingPatchRef.current, ...body };
+      if (patchTimerRef.current) {
+        window.clearTimeout(patchTimerRef.current);
+        patchTimerRef.current = null;
+      }
+      if (opts.immediate) {
+        void flushPatch();
+        return;
+      }
+      patchTimerRef.current = window.setTimeout(() => {
+        void flushPatch();
+      }, PERSIST_DEBOUNCE_MS);
+    },
+    [flushPatch],
+  );
+
+  // Flush on unmount so we don't lose the last few seconds of transcript.
+  useEffect(() => {
+    return () => {
+      void flushPatch();
+    };
+  }, [flushPatch]);
 
   // Resume an existing session: hydrate step / image / mesh from the API.
   useEffect(() => {
@@ -56,7 +128,12 @@ export default function DesignFlow() {
         if (cancelled) return;
         setSessionId(session.id);
         setLatestImage(session.thumbnail);
+        setLatestMeshImage(session.meshImage ?? null);
         setLatestPrompt(session.prompt);
+        setModelTranscript(session.suggestion ?? "");
+        setUserTranscript(session.transcript ?? "");
+        setAlbum(Array.isArray(session.renderedImages) ? session.renderedImages : []);
+        setResumedFromSaved(true);
         const step = Math.max(1, Math.min(STEPS.length, session.currentStep || 1));
         setCurrentStep(step);
         setFurthestStep(step);
@@ -81,27 +158,35 @@ export default function DesignFlow() {
   }, [resumeId]);
 
   const handleRendered = useCallback(
-    (image: string, prompt: string | null) => {
-      setLatestImage(image);
+    (roomImage: string, meshImage: string, prompt: string | null) => {
+      setLatestImage(roomImage);
+      setLatestMeshImage(meshImage);
       setLatestPrompt(prompt);
 
+      const payload: PatchSessionBody = {
+        thumbnail: roomImage,
+        meshImage,
+        prompt: prompt ?? "",
+      };
+
       if (sessionId) {
-        api
-          .patchSession(sessionId, { thumbnail: image, prompt: prompt ?? "" })
-          .catch((err) => console.warn("session patch failed", err));
+        queuePatch(payload, { immediate: true });
         return;
       }
       if (sessionCreationRef.current) {
         sessionCreationRef.current
-          .then((id) =>
-            api.patchSession(id, { thumbnail: image, prompt: prompt ?? "" }),
-          )
+          .then((id) => api.patchSession(id, payload))
           .catch((err) => console.warn("session patch failed", err));
         return;
       }
       const title = prompt?.slice(0, 60) || "Untitled session";
       sessionCreationRef.current = api
-        .createSession({ title, thumbnail: image, prompt })
+        .createSession({
+          title,
+          thumbnail: roomImage,
+          meshImage,
+          prompt,
+        })
         .then((res) => {
           setSessionId(res.session.id);
           return res.session.id;
@@ -112,17 +197,32 @@ export default function DesignFlow() {
           throw err;
         });
     },
-    [sessionId],
+    [sessionId, queuePatch],
+  );
+
+  const handleAlbumChange = useCallback(
+    (next: AlbumEntry[]) => {
+      setAlbum(next);
+      queuePatch({ renderedImages: next });
+    },
+    [queuePatch],
+  );
+
+  const handleTranscriptChange = useCallback(
+    (nextUser: string, nextModel: string) => {
+      setUserTranscript(nextUser);
+      setModelTranscript(nextModel);
+      queuePatch({ transcript: nextUser, suggestion: nextModel });
+    },
+    [queuePatch],
   );
 
   const patchStep = useCallback(
     (step: number, completed?: boolean) => {
       if (!sessionId) return;
-      api
-        .patchSession(sessionId, { currentStep: step, completed })
-        .catch((err) => console.warn("session step patch failed", err));
+      queuePatch({ currentStep: step, completed }, { immediate: true });
     },
-    [sessionId],
+    [sessionId, queuePatch],
   );
 
   const handleClose = useCallback(() => {
@@ -134,9 +234,10 @@ export default function DesignFlow() {
   }, [furthestStep, navigate]);
 
   const handleSaveDraft = useCallback(() => {
+    void flushPatch();
     setShowCloseModal(false);
     navigate("/gallery");
-  }, [navigate]);
+  }, [navigate, flushPatch]);
 
   const handleDiscard = useCallback(() => {
     setShowCloseModal(false);
@@ -172,8 +273,14 @@ export default function DesignFlow() {
     setFurthestStep(1);
     setCurrentStep(1);
     setLatestImage(null);
+    setLatestMeshImage(null);
     setLatestPrompt(null);
     setSessionId(null);
+    setAlbum([]);
+    setUserTranscript("");
+    setModelTranscript("");
+    setResumedFromSaved(false);
+    pendingPatchRef.current = {};
     sessionCreationRef.current = null;
     setSavedMeshUrl((url) => {
       if (url) URL.revokeObjectURL(url);
@@ -185,24 +292,53 @@ export default function DesignFlow() {
   const renderStep = () => {
     switch (currentStep) {
       case 1:
-        return <StylistStep onNext={nextStep} onRendered={handleRendered} />;
+        return (
+          <StylistStep
+            onNext={nextStep}
+            onRendered={handleRendered}
+            initialAlbum={album}
+            initialUserTranscript={userTranscript}
+            initialModelTranscript={modelTranscript}
+            onAlbumChange={handleAlbumChange}
+            onTranscriptChange={handleTranscriptChange}
+            autoStart={!resumedFromSaved}
+          />
+        );
       case 2:
         return (
           <MeshyStep
             onNext={nextStep}
             onBack={prevStep}
-            imageDataUrl={latestImage}
+            imageDataUrl={latestMeshImage ?? latestImage}
             prompt={latestPrompt}
             sessionId={sessionId}
             savedMeshUrl={savedMeshUrl}
           />
         );
       case 3:
-        return <ARStep onNext={nextStep} onBack={prevStep} />;
+        return (
+          <ARStep
+            onNext={nextStep}
+            onBack={prevStep}
+            sessionId={sessionId}
+            savedMeshUrl={savedMeshUrl}
+          />
+        );
       case 4:
         return <FaberPromoStep onStartAnother={handleStartAnother} />;
       default:
-        return <StylistStep onNext={nextStep} onRendered={handleRendered} />;
+        return (
+          <StylistStep
+            onNext={nextStep}
+            onRendered={handleRendered}
+            initialAlbum={album}
+            initialUserTranscript={userTranscript}
+            initialModelTranscript={modelTranscript}
+            onAlbumChange={handleAlbumChange}
+            onTranscriptChange={handleTranscriptChange}
+            autoStart={!resumedFromSaved}
+          />
+        );
     }
   };
 

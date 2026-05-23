@@ -5,12 +5,15 @@ type ModelViewerProps = React.DetailedHTMLProps<
     src?: string;
     alt?: string;
     ar?: boolean;
+    "ar-modes"?: string;
+    "ar-scale"?: string;
     "auto-rotate"?: boolean;
     "camera-controls"?: boolean;
     "shadow-intensity"?: string | number;
     exposure?: string | number;
     "environment-image"?: string;
     poster?: string;
+    "touch-action"?: string;
   },
   HTMLElement
 >;
