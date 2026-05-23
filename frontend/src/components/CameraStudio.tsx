@@ -50,6 +50,8 @@ export function CameraStudio({
   const [viewerIndex, setViewerIndex] = useState<number | null>(null);
   const [muted, setMuted] = useState(true);
   const mutedRef = useRef(true);
+  const [liveCaption, setLiveCaption] = useState("");
+  const captionFadeTimerRef = useRef<number | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -144,14 +146,33 @@ export function CameraStudio({
             case "user-transcript":
               setUserTranscript((t) => (t + " " + e.text).trim());
               break;
-            case "model-transcript":
+            case "model-transcript": {
               setModelTranscript((t) => (t + " " + e.text).trim());
+              // If a fade-out was pending from a previous turn, the new chunk
+              // belongs to a fresh utterance — reset rather than append.
+              const startingFresh = captionFadeTimerRef.current !== null;
+              if (captionFadeTimerRef.current) {
+                clearTimeout(captionFadeTimerRef.current);
+                captionFadeTimerRef.current = null;
+              }
+              setLiveCaption((c) => (startingFresh ? e.text : c + " " + e.text).trim());
               break;
+            }
             case "turn-complete":
               setStatus("listening");
+              if (captionFadeTimerRef.current) clearTimeout(captionFadeTimerRef.current);
+              captionFadeTimerRef.current = window.setTimeout(() => {
+                setLiveCaption("");
+                captionFadeTimerRef.current = null;
+              }, 2500);
               break;
             case "interrupted":
               playerRef.current?.interrupt();
+              if (captionFadeTimerRef.current) {
+                clearTimeout(captionFadeTimerRef.current);
+                captionFadeTimerRef.current = null;
+              }
+              setLiveCaption("");
               break;
             case "rendering":
               setRendering(true);
@@ -253,6 +274,11 @@ export function CameraStudio({
     sessionRef.current = null;
     playerRef.current?.close();
     playerRef.current = null;
+    if (captionFadeTimerRef.current) {
+      clearTimeout(captionFadeTimerRef.current);
+      captionFadeTimerRef.current = null;
+    }
+    setLiveCaption("");
     setStatus("idle");
   }
 
@@ -305,7 +331,7 @@ export function CameraStudio({
       />
       {status === "idle" && "Ready"}
       {status === "connecting" && "Connecting…"}
-      {status === "listening" && (muted ? "Hold mic to talk" : "Listening")}
+      {status === "listening" && (muted ? "Muted" : "Listening")}
       {status === "speaking" && "Stylist talking"}
       {status === "error" && "Error"}
     </div>
@@ -340,49 +366,57 @@ export function CameraStudio({
             <div className="pointer-events-auto">{statusPill}</div>
           </div>
 
-          <div className="mt-auto flex items-end justify-between gap-3 p-4 pb-[max(1rem,env(safe-area-inset-bottom))]">
-            {/* Album / rendering indicator — bottom left */}
+          {liveCaption && (
+            <div className="pointer-events-none mt-auto px-4 pb-2">
+              <p className="mx-auto max-w-md rounded-lg bg-black/65 px-4 py-2 text-center text-sm leading-snug text-white shadow-lg backdrop-blur">
+                {liveCaption}
+              </p>
+            </div>
+          )}
+
+          <div className={cn("flex items-end justify-between gap-3 p-4 pb-[max(1rem,env(safe-area-inset-bottom))]", !liveCaption && "mt-auto")}>
+            {/* Album button — bottom left. Always tappable. */}
             <div className="pointer-events-auto flex flex-col items-center gap-1">
-              {rendering && (
-                <div className="flex size-20 items-center justify-center rounded-xl border border-white/40 bg-black/55 text-[10px] text-white backdrop-blur">
-                  <div className="flex flex-col items-center gap-1">
-                    <Sparkles className="size-4 animate-pulse" />
-                    <span>Rendering…</span>
-                  </div>
-                </div>
-              )}
-              {!rendering && renderedImages.length === 0 && (
-                <div
-                  className="size-20 rounded-xl border-2 border-white/80 bg-black/40 backdrop-blur"
-                  aria-hidden
-                />
-              )}
-              {!rendering && renderedImages.length > 0 && (
-                <button
-                  type="button"
-                  onClick={() => setAlbumOpen(true)}
-                  className="relative block size-20 active:scale-95"
-                  aria-label={`Open album — ${renderedImages.length} ${renderedImages.length === 1 ? "image" : "images"}`}
-                >
-                  {/* Stacked card effect */}
-                  {renderedImages.length > 1 && (
-                    <span className="absolute -right-1 -top-1 size-full -rotate-3 rounded-xl border-2 border-white/60 bg-black/40 shadow-md" />
-                  )}
-                  {renderedImages.length > 2 && (
-                    <span className="absolute -right-2 -top-2 size-full rotate-3 rounded-xl border-2 border-white/40 bg-black/30 shadow-md" />
-                  )}
-                  <span className="absolute inset-0 block overflow-hidden rounded-xl border-2 border-white/80 shadow-lg">
+              <button
+                type="button"
+                onClick={() => setAlbumOpen(true)}
+                className="relative block size-20 active:scale-95"
+                aria-label={
+                  renderedImages.length === 0
+                    ? "Open album (empty)"
+                    : `Open album — ${renderedImages.length} ${renderedImages.length === 1 ? "image" : "images"}`
+                }
+              >
+                {/* Stacked card effect when 2+ images */}
+                {renderedImages.length > 1 && (
+                  <span className="absolute -right-1 -top-1 size-full -rotate-3 rounded-xl border-2 border-white/60 bg-black/40 shadow-md" />
+                )}
+                {renderedImages.length > 2 && (
+                  <span className="absolute -right-2 -top-2 size-full rotate-3 rounded-xl border-2 border-white/40 bg-black/30 shadow-md" />
+                )}
+                <span className="absolute inset-0 block overflow-hidden rounded-xl border-2 border-white/80 bg-black/40 shadow-lg backdrop-blur">
+                  {renderedImages.length > 0 && (
                     <img
                       src={renderedImages[renderedImages.length - 1].data}
                       alt={renderedImages[renderedImages.length - 1].prompt ?? "rendered"}
                       className="size-full object-cover"
                     />
-                  </span>
+                  )}
+                  {rendering && (
+                    <span className="absolute inset-0 flex items-center justify-center bg-black/55 text-[10px] text-white backdrop-blur-sm">
+                      <span className="flex flex-col items-center gap-1">
+                        <Sparkles className="size-4 animate-pulse" />
+                        <span>Rendering…</span>
+                      </span>
+                    </span>
+                  )}
+                </span>
+                {renderedImages.length > 0 && (
                   <span className="absolute -bottom-1 -right-1 min-w-5 rounded-full bg-chestnut px-1.5 text-center text-[11px] font-medium leading-5 text-white shadow">
                     {renderedImages.length}
                   </span>
-                </button>
-              )}
+                )}
+              </button>
             </div>
 
             {/* Primary mic button — bottom right. Tap to toggle. */}
